@@ -1,0 +1,15 @@
+# Bytecode compilado de Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Configuración local del editor
+.claude/
+
+# Salidas generadas por benchmark.py (se regeneran con python benchmark.py)
+salidas/
+
+# Entornos virtuales
+venv/
+.venv/
+env/
