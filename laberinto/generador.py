@@ -173,28 +173,43 @@ class Laberinto:
         """
         Crea una barrera horizontal en el tercio central del laberinto con
         sólo 1-2 aberturas, forzando a ambos agentes a pasar por ese punto.
-        La conectividad se verifica después en _garantizar_conectividad().
+
+        Las aberturas se colocan en columnas impares (posiciones de celda del
+        backtracker) y se fuerza suelo en la fila inmediatamente superior e
+        inferior a cada abertura.  Esto garantiza que la abertura sea siempre
+        atravesable sin necesidad de perforar celdas aleatorias.
         """
-        # Fila de la barrera: al 40 % de la altura para separar bien el mapa
+        # Fila de la barrera: al 40 % de la altura; siempre impar
         fila_barrera = max(2, int(self.filas * 0.40))
-        # Si la fila es par, ajustar a impar para alinearse con el grid
         if fila_barrera % 2 == 0:
             fila_barrera += 1
+        # Asegurar al menos una fila interior arriba y abajo
+        fila_barrera = max(2, min(self.filas - 3, fila_barrera))
 
-        # Colocar paredes en toda la fila (dentro del borde)
+        # Cerrar toda la fila de la barrera
         for col in range(1, self.cols - 1):
-            self.grid[fila_barrera][col] = PARED   # Cerrar toda la fila
+            self.grid[fila_barrera][col] = PARED
 
-        # Número de aberturas: 1 o 2 según el ancho del laberinto
+        # Número de aberturas según el ancho del laberinto
         num_aberturas = 1 if self.cols < 21 else 2
 
-        # Generar posiciones de aberturas distribuidas uniformemente
-        paso = (self.cols - 2) // (num_aberturas + 1)   # Espaciado entre aberturas
-        cols_aberturas = [1 + paso * (i + 1) for i in range(num_aberturas)]
+        # Usar solo columnas impares: en el backtracker son posiciones de celda,
+        # por lo que la fila adyacente (par) puede forzarse a suelo sin romper
+        # la estructura del laberinto.
+        cols_impares = [c for c in range(1, self.cols - 1) if c % 2 == 1]
+        paso = max(1, len(cols_impares) // (num_aberturas + 1))
+        cols_aberturas = [
+            cols_impares[min(paso * (i + 1), len(cols_impares) - 1)]
+            for i in range(num_aberturas)
+        ]
 
         for col in cols_aberturas:
-            col = max(1, min(self.cols - 2, col))        # Clamp dentro del borde
-            self.grid[fila_barrera][col] = SUELO         # Abrir la abertura
+            self.grid[fila_barrera][col] = SUELO             # Abertura en la barrera
+            # Forzar suelo en las celdas adyacentes para garantizar paso
+            if fila_barrera - 1 >= 1:
+                self.grid[fila_barrera - 1][col] = SUELO
+            if fila_barrera + 1 <= self.filas - 2:
+                self.grid[fila_barrera + 1][col] = SUELO
 
     # ── Garantizar conectividad ─────────────────────────────────────────────
 
@@ -202,14 +217,27 @@ class Laberinto:
         """
         Verifica que (1,1) esté conectado a cada salida; si no, abre celdas
         aleatoriamente hasta lograr la conectividad. Máximo 1000 intentos.
+
+        En el escenario CUELLO_DE_BOTELLA protege la fila de la barrera para
+        no destruir el cuello al perforar celdas aleatorias.
         """
+        # Calcular fila protegida para el cuello de botella
+        fila_protegida: int | None = None
+        if self.tipo_escenario == CUELLO_DE_BOTELLA:
+            fila_protegida = max(2, int(self.filas * 0.40))
+            if fila_protegida % 2 == 0:
+                fila_protegida += 1
+
         for salida in self.salidas:
             intentos = 0
             while not self.verificar_conectividad((1, 1), salida) and intentos < 1000:
-                # Elegir una celda pared aleatoria interna y abrirla
                 fila = self.rng.randint(1, self.filas - 2)
                 col  = self.rng.randint(1, self.cols - 2)
-                self.grid[fila][col] = SUELO    # Abrir celda para crear conexión
+                # No perforar la barrera del cuello de botella
+                if fila_protegida is not None and fila == fila_protegida:
+                    intentos += 1
+                    continue
+                self.grid[fila][col] = SUELO
                 intentos += 1
 
     # ── Salidas ────────────────────────────────────────────────────────────
@@ -272,25 +300,45 @@ class Laberinto:
     def celda_libre_lejana(self, referencia: Celda, min_distancia: int = 10) -> Celda:
         """
         BFS desde 'referencia'; devuelve la celda transitable más lejana
-        en pasos BFS. Garantiza que existe camino entre referencia y el retorno.
+        en pasos BFS que además esté a ≥ min_distancia pasos de referencia.
+
+        Si no existe ninguna celda tan lejana (laberinto muy pequeño), devuelve
+        la celda más lejana disponible como fallback.
+        Garantiza que existe camino entre referencia y el retorno.
+
+        Args:
+            referencia    : Celda de origen del BFS.
+            min_distancia : Distancia mínima deseada en pasos BFS.
         """
         visitados: dict[Celda, int] = {referencia: 0}    # Distancia BFS por celda
         cola: deque[Celda] = deque([referencia])          # Cola del BFS
-        mas_lejana: Celda = referencia                    # Candidato actual más lejano
-        max_dist: int = 0                                 # Distancia máxima encontrada
+
+        mas_lejana_global: Celda = referencia    # Celda más lejana sin restricción
+        max_dist_global: int = 0                 # Su distancia
+        mas_lejana_min: Celda = referencia       # Celda más lejana con ≥ min_distancia
+        max_dist_min: int = 0                    # Su distancia
 
         while cola:
             actual = cola.popleft()
             dist = visitados[actual]
-            if dist > max_dist:
-                max_dist = dist
-                mas_lejana = actual         # Actualizar candidato más lejano
+
+            # Candidato para la celda más lejana en general (sin filtro)
+            if dist > max_dist_global:
+                max_dist_global = dist
+                mas_lejana_global = actual
+
+            # Candidato para la celda más lejana que cumple min_distancia
+            if dist >= min_distancia and dist > max_dist_min:
+                max_dist_min = dist
+                mas_lejana_min = actual
+
             for vecino in self.vecinos_transitables(actual):
                 if vecino not in visitados:
                     visitados[vecino] = dist + 1
                     cola.append(vecino)
 
-        return mas_lejana    # Celda más lejana encontrada con camino garantizado
+        # Preferir la celda que cumple la distancia mínima; si no existe, usar fallback
+        return mas_lejana_min if max_dist_min > 0 else mas_lejana_global
 
     def nombre_escenario(self) -> str:
         """Devuelve el nombre legible del tipo de escenario."""

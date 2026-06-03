@@ -20,9 +20,7 @@ Formato del CSV
 from __future__ import annotations
 import csv                         # Módulo estándar para leer/escribir CSV
 import os                          # Manejo de rutas y directorios
-import time                        # Marca de tiempo para el nombre del archivo
-from dataclasses import dataclass, field, asdict   # Estructuras de datos
-from typing import Optional
+from dataclasses import dataclass  # Estructura de datos
 
 from config import SALIDAS_DIR     # Directorio donde se guardan los resultados
 
@@ -161,70 +159,22 @@ class AcumuladorMetricas:
 # Exportador CSV
 # ══════════════════════════════════════════════════════════════════════════════
 
-# Campos del CSV en orden legible para el informe
-_CAMPOS_CSV = [
-    "tamano_n", "tipo_escenario", "configuracion",
-    "resultado", "ticks_totales",
-    "pasos_cazador", "pasos_evasor",
-    "nodos_cazador", "tiempo_total_cazador", "tiempo_promedio_cazador",
-    "nodos_evasor",  "tiempo_total_evasor",  "tiempo_promedio_evasor",
-]
-
-
-def exportar_csv(
-    registros: list[RegistroPartida],
-    nombre_archivo: str = "partidas.csv",
-) -> str:
-    """
-    Exporta una lista de registros de partida a un archivo CSV.
-
-    Crea el directorio SALIDAS_DIR si no existe.
-    Agrega filas si el archivo ya existe (no sobrescribe).
-
-    Args:
-        registros      : Lista de RegistroPartida a exportar.
-        nombre_archivo : Nombre del archivo CSV dentro de SALIDAS_DIR.
-
-    Returns:
-        Ruta completa del archivo CSV generado.
-    """
-    os.makedirs(SALIDAS_DIR, exist_ok=True)   # Crear directorio si no existe
-
-    ruta = os.path.join(SALIDAS_DIR, nombre_archivo)   # Ruta completa del CSV
-
-    # Determinar si el archivo ya existe (para no repetir la cabecera)
-    archivo_nuevo = not os.path.exists(ruta)
-
-    with open(ruta, "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=_CAMPOS_CSV)
-
-        if archivo_nuevo:
-            writer.writeheader()   # Escribir cabecera solo la primera vez
-
-        for registro in registros:
-            # Convertir dataclass a dict y escribir fila
-            fila = asdict(registro)
-            writer.writerow(fila)
-
-    return ruta   # Devolver ruta para que el llamante pueda informar al usuario
-
-
 def exportar_benchmark_csv(
     filas: list[dict],
     nombre_archivo: str = "benchmark.csv",
 ) -> str:
     """
-    Exporta datos de benchmark (dict arbitrario) a un archivo CSV.
+    Exporta datos de benchmark (lista de dicts) a un archivo CSV.
 
-    A diferencia de exportar_csv, acepta dicts genéricos para las filas
-    del benchmark (que tienen columnas distintas a las partidas).
+    Acepta dicts genéricos; las columnas se deducen de las claves del primer
+    elemento (todas las filas deben tener las mismas claves).
 
     Args:
         filas          : Lista de dicts con los datos del benchmark.
         nombre_archivo : Nombre del archivo CSV dentro de SALIDAS_DIR.
 
     Returns:
-        Ruta completa del archivo CSV generado.
+        Ruta completa del archivo CSV generado, o cadena vacía si no hay filas.
     """
     if not filas:
         return ""   # Nada que exportar si la lista está vacía

@@ -76,7 +76,7 @@ class EstadoJuego:
     pos_oponente: Celda
     rol: Rol
     tiempo_restante: float
-    salidas: list[Celda]
+    salidas: tuple[Celda, ...]   # tuple para que frozen=True sea realmente inmutable
     tick: int
 
 
@@ -123,3 +123,27 @@ class Agente(ABC):
         Args:
             gano: True si este agente ganó, False si perdió.
         """
+
+
+# ── Utilidad compartida (usada por los módulos de algoritmos) ──────────────
+
+def celda_a_direccion(origen: Celda, destino: Celda) -> Direccion:
+    """
+    Convierte un par de celdas adyacentes en la Direccion correspondiente.
+
+    Función auxiliar compartida por algoritmos/dijkstra.py y algoritmos/dfs_memo.py
+    para evitar duplicación de código.
+
+    Args:
+        origen  : Celda de partida (fila, col).
+        destino : Celda destino adyacente (fila, col).
+
+    Returns:
+        Direccion correspondiente al desplazamiento, o NOOP si no son adyacentes.
+    """
+    df = destino[0] - origen[0]   # Diferencia en fila
+    dc = destino[1] - origen[1]   # Diferencia en columna
+    for d in Direccion:
+        if d.value == (df, dc):
+            return d              # Dirección que coincide con el desplazamiento
+    return Direccion.NOOP         # No corresponde a ninguna dirección válida

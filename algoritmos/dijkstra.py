@@ -35,7 +35,7 @@ import time                          # Medición de tiempo por decisión
 from collections import deque        # Cola para BFS de pesos del evasor
 from typing import Optional
 
-from agentes.base import Agente, Direccion, EstadoJuego, Rol, Celda
+from agentes.base import Agente, Direccion, EstadoJuego, Rol, Celda, celda_a_direccion
 from laberinto.generador import Laberinto
 from config import DIJKSTRA_RECALCULO
 
@@ -173,16 +173,6 @@ def _calcular_pesos_evasor(
     return pesos   # Mapa de pesos: celdas no incluidas usan peso 1.0 por defecto
 
 
-def _celda_a_direccion(origen: Celda, destino: Celda) -> Direccion:
-    """Convierte un par de celdas adyacentes en la Direccion correspondiente."""
-    df = destino[0] - origen[0]   # Diferencia en fila
-    dc = destino[1] - origen[1]   # Diferencia en columna
-    for d in Direccion:
-        if d.value == (df, dc):
-            return d              # Devolver la dirección que coincide
-    return Direccion.NOOP         # No corresponde a ninguna dirección válida
-
-
 # ══════════════════════════════════════════════════════════════════════════════
 # Agente estrategia Dijkstra (reutilizable para ambos roles)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -280,7 +270,7 @@ class EstrategiaDijkstra(Agente):
 
         # El primer elemento de _ruta es la siguiente celda a visitar
         siguiente = self._ruta[0]
-        return _celda_a_direccion(estado.pos_propia, siguiente)
+        return celda_a_direccion(estado.pos_propia, siguiente)
 
     # ── Evasor ─────────────────────────────────────────────────────────────
 
@@ -322,7 +312,7 @@ class EstrategiaDijkstra(Agente):
             return Direccion.NOOP   # Sin ruta encontrada: quedarse quieto
 
         # Tomar el primer paso de la mejor ruta
-        return _celda_a_direccion(estado.pos_propia, mejor_ruta[0])
+        return celda_a_direccion(estado.pos_propia, mejor_ruta[0])
 
     # ── Propiedad de depuración ─────────────────────────────────────────────
 

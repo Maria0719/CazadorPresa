@@ -38,7 +38,7 @@ import pygame            # Motor gráfico
 import config            # Parámetros del proyecto
 from config import (
     COLS, FILAS, SEMILLA, TAMANO_CELDA, FPS,
-    MOSTRAR_CAMINO_DEBUG,
+    MOSTRAR_CAMINO_DEBUG, COLOR_FONDO,
 )
 from laberinto.generador import Laberinto           # Generador de laberintos
 from agentes.base import Agente, Rol                # Interfaz y roles
@@ -207,6 +207,107 @@ def crear_agentes(
         return ia_evasor, ia_cazador
 
 
+# ── Input libre de tamaño ────────────────────────────────────────────────
+
+def ejecutar_input_tamano(
+    pantalla: pygame.Surface,
+    reloj: pygame.time.Clock,
+    fuentes: dict,
+    ancho: int,
+    alto: int,
+) -> int | None:
+    """
+    Pantalla de ingreso libre del tamaño del laberinto.
+
+    El usuario escribe cualquier número entero ≥ 5.
+    Si ingresa un número par, se ajusta automáticamente al siguiente impar.
+
+    Returns:
+        Tamaño elegido (impar, ≥ 5), o None si el usuario sale con ESC.
+    """
+    TAMANO_MIN = 5
+    TAMANO_MAX = 201   # Más grande ralentiza mucho; límite práctico
+
+    texto = ""     # Dígitos que el usuario ha escrito
+    error = ""     # Mensaje de error si la validación falla
+
+    while True:
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                return None
+            if evento.type == pygame.KEYDOWN:
+                if evento.key == pygame.K_ESCAPE:
+                    return None
+
+                elif evento.key == pygame.K_RETURN:
+                    # Validar y confirmar
+                    try:
+                        n = int(texto)
+                    except ValueError:
+                        error = "Ingresa un número entero"
+                        continue
+
+                    if n < TAMANO_MIN:
+                        error = f"Mínimo: {TAMANO_MIN}"
+                    elif n > TAMANO_MAX:
+                        error = f"Máximo: {TAMANO_MAX}"
+                    else:
+                        if n % 2 == 0:
+                            n += 1   # Ajustar a impar automáticamente
+                        return n
+
+                elif evento.key == pygame.K_BACKSPACE:
+                    texto = texto[:-1]
+                    error = ""
+
+                elif evento.unicode.isdigit() and len(texto) < 3:
+                    texto += evento.unicode
+                    error = ""
+
+        # ── Render ──────────────────────────────────────────────────────
+        pantalla.fill(COLOR_FONDO)
+
+        titulo = fuentes["titulo"].render("EVASOR  vs  CAZADOR", True, (220, 200, 80))
+        pantalla.blit(titulo, (ancho // 2 - titulo.get_width() // 2, alto // 8))
+
+        paso = fuentes["chica"].render(
+            "Paso 1 — Elige el TAMAÑO del laberinto (n × n)",
+            True, (160, 160, 220),
+        )
+        pantalla.blit(paso, (ancho // 2 - paso.get_width() // 2, alto // 8 + 55))
+
+        rango = fuentes["chica"].render(
+            f"Rango: {TAMANO_MIN} – {TAMANO_MAX}  |  Impares recomendados "
+            "(si ingresas un par se ajusta solo)",
+            True, (110, 110, 150),
+        )
+        pantalla.blit(rango, (ancho // 2 - rango.get_width() // 2, alto // 8 + 82))
+
+        # Caja de texto
+        box_w, box_h = 160, 54
+        box_x = ancho // 2 - box_w // 2
+        box_y = alto // 2 - box_h // 2
+        pygame.draw.rect(pantalla, (30, 30, 60), (box_x, box_y, box_w, box_h), border_radius=8)
+        pygame.draw.rect(pantalla, (150, 150, 230), (box_x, box_y, box_w, box_h), 2, border_radius=8)
+
+        cursor = "|" if (pygame.time.get_ticks() // 500) % 2 == 0 else " "
+        sup_num = fuentes["grande"].render(texto + cursor, True, (255, 255, 100))
+        pantalla.blit(sup_num, (ancho // 2 - sup_num.get_width() // 2, box_y + 7))
+
+        if error:
+            sup_err = fuentes["chica"].render(error, True, (255, 80, 80))
+            pantalla.blit(sup_err, (ancho // 2 - sup_err.get_width() // 2, box_y + box_h + 12))
+
+        ayuda = fuentes["chica"].render(
+            "Escribe el tamaño   ENTER para confirmar   ESC para salir",
+            True, (100, 100, 130),
+        )
+        pantalla.blit(ayuda, (ancho // 2 - ayuda.get_width() // 2, alto - 50))
+
+        pygame.display.flip()
+        reloj.tick(FPS)
+
+
 # ── Bucle de una partida ──────────────────────────────────────────────────
 
 def ejecutar_partida(
@@ -219,6 +320,8 @@ def ejecutar_partida(
     tipo_escenario: int,
     ancho_ventana: int,
     alto_ventana: int,
+    tamano_n: int = 21,
+    tamano_celda: int = TAMANO_CELDA,
     agente_cazador_externo: Agente | None = None,
     agente_evasor_externo: Agente | None = None,
 ) -> bool:
@@ -233,8 +336,8 @@ def ejecutar_partida(
         True  → el usuario quiere volver al menú / reiniciar.
         False → el usuario quiere salir del programa.
     """
-    # Crear laberinto con el escenario y semilla elegidos
-    lab = Laberinto(FILAS, COLS, semilla, tipo_escenario=tipo_escenario)
+    # Crear laberinto con el tamaño, escenario y semilla elegidos
+    lab = Laberinto(tamano_n, tamano_n, semilla, tipo_escenario=tipo_escenario)
 
     # Crear agentes según la configuración (pasamos los externos si los hay)
     agente_evasor, agente_cazador = crear_agentes(
@@ -244,7 +347,7 @@ def ejecutar_partida(
     )
 
     # Crear el motor del juego
-    motor = Motor(lab, agente_evasor, agente_cazador, TAMANO_CELDA,
+    motor = Motor(lab, agente_evasor, agente_cazador, tamano_celda,
                   configuracion=configuracion)
 
     # Superficie para el laberinto (por debajo del HUD)
@@ -334,6 +437,13 @@ def ejecutar_subMenu(
 
 def main() -> None:
     """Función principal: inicializa Pygame y gestiona el flujo de menús."""
+    # Forzar UTF-8 en la consola de Windows para evitar mojibake con acentos
+    for _s in (sys.stdout, sys.stderr):
+        try:
+            _s.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
+
     args = parse_args()    # Parsear argumentos de línea de comandos
 
     # Aplicar argumentos de línea de comandos a config
@@ -380,48 +490,84 @@ def main() -> None:
         "chica":  pygame.font.SysFont("consolas", 15),
     }
 
+    # Ancho mínimo para que el texto de los submenús quepa sin recortarse.
+    # 760 px garantiza que las opciones más largas (≈714 px) entren con margen.
+    # El helper _blit_centrado de render.py añade auto-escala de seguridad.
+    ANCHO_MIN_MENU = 760
+    ALTO_MIN_MENU  = 560
+
     # ── Bucle de menús ─────────────────────────────────────────────────────
     while True:
-        # Paso 1: elegir escenario
+        # Garantizar ventana mínima para los menús antes de cada iteración
+        if ancho_ventana < ANCHO_MIN_MENU or alto_ventana < ALTO_MIN_MENU:
+            ancho_ventana = ANCHO_MIN_MENU
+            alto_ventana  = ALTO_MIN_MENU
+            pantalla = pygame.display.set_mode((ancho_ventana, alto_ventana))
+
+        # Paso 1: ingresar tamaño libre del laberinto
+        tamano_n = ejecutar_input_tamano(
+            pantalla, reloj, fuentes, ancho_ventana, alto_ventana,
+        )
+        if tamano_n is None:
+            break    # ESC en el primer paso: salir del programa
+
+        # Calcular tamaño de celda y dimensiones del juego SIN redimensionar aún.
+        # La ventana apunta a ~85 % de la pantalla con un tope de 900 px.
+        info = pygame.display.Info()
+        ventana_obj = min(info.current_w * 85 // 100,
+                          info.current_h * 85 // 100 - ALTO_HUD,
+                          900)
+        tamano_celda = max(4, min(64, ventana_obj // tamano_n))
+        ancho_juego  = tamano_n * tamano_celda
+        alto_juego   = tamano_n * tamano_celda + ALTO_HUD
+
+        # Pasos 2-4: submenús en la ventana actual (suficientemente grande)
+        # El resize ocurre solo cuando el juego va a empezar, no antes.
         idx_esc = ejecutar_subMenu(
             pantalla, reloj, fuentes,
-            "Paso 1 — Elige el ESCENARIO",
+            "Paso 2 — Elige el ESCENARIO",
             NOMBRES_ESCENARIOS,
             ancho_ventana, alto_ventana,
         )
         if idx_esc is None:
-            break    # ESC en el primer menú: salir del programa
+            continue   # ESC: volver al paso anterior
 
-        # Paso 2: elegir configuración A o B
         idx_cfg = ejecutar_subMenu(
             pantalla, reloj, fuentes,
-            "Paso 2 — Elige la CONFIGURACIÓN",
+            "Paso 3 — Elige la CONFIGURACIÓN",
             NOMBRES_CONFIGS,
             ancho_ventana, alto_ventana,
         )
         if idx_cfg is None:
             continue   # ESC: volver al paso anterior
 
-        # Paso 3: elegir rol del jugador
         idx_rol = ejecutar_subMenu(
             pantalla, reloj, fuentes,
-            "Paso 3 — Elige tu ROL",
+            "Paso 4 — Elige tu ROL",
             NOMBRES_ROLES,
             ancho_ventana, alto_ventana,
         )
         if idx_rol is None:
             continue   # ESC: volver al paso anterior
 
+        # Solo ahora redimensionar la ventana al tamaño del laberinto elegido
+        config.TAMANO_CELDA = tamano_celda
+        ancho_ventana = ancho_juego
+        alto_ventana  = alto_juego
+        pantalla = pygame.display.set_mode((ancho_ventana, alto_ventana))
+
         # Mapear índice de config a letra
         configuracion = "A" if idx_cfg == 0 else "B"
 
-        # Ejecutar la partida con los parámetros elegidos (más agentes externos si hay)
+        # Ejecutar la partida con los parámetros elegidos
         continuar = ejecutar_partida(
             pantalla, reloj, fuentes,
             semilla, idx_rol, configuracion, idx_esc,
             ancho_ventana, alto_ventana,
-            agente_cazador_externo=agente_cazador_externo,   # Puede ser None
-            agente_evasor_externo=agente_evasor_externo,     # Puede ser None
+            tamano_n=tamano_n,
+            tamano_celda=tamano_celda,
+            agente_cazador_externo=agente_cazador_externo,
+            agente_evasor_externo=agente_evasor_externo,
         )
         if not continuar:
             break   # El usuario cerró la ventana o eligió salir

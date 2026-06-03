@@ -6,22 +6,29 @@ llamado desde el bucle de eventos de Pygame antes de `decidir_movimiento`.
 """
 
 from __future__ import annotations
-import pygame
 from agentes.base import Agente, Direccion, EstadoJuego, Rol, Celda
 from laberinto.generador import Laberinto
 
-
-# Mapeo tecla → dirección
-_TECLAS: dict[int, Direccion] = {
-    pygame.K_UP: Direccion.ARRIBA,
-    pygame.K_w: Direccion.ARRIBA,
-    pygame.K_DOWN: Direccion.ABAJO,
-    pygame.K_s: Direccion.ABAJO,
-    pygame.K_LEFT: Direccion.IZQUIERDA,
-    pygame.K_a: Direccion.IZQUIERDA,
-    pygame.K_RIGHT: Direccion.DERECHA,
-    pygame.K_d: Direccion.DERECHA,
-}
+# Importar pygame solo si está disponible.
+# El benchmark corre headless (sin pantalla ni Pygame instalado); en ese modo
+# Humano existe como clase válida para isinstance(), pero _TECLAS queda vacío
+# y registrar_tecla() se convierte en no-op.
+try:
+    import pygame as _pygame
+    # Mapeo tecla → dirección (solo disponible cuando pygame está instalado)
+    _TECLAS: dict[int, Direccion] = {
+        _pygame.K_UP:    Direccion.ARRIBA,
+        _pygame.K_w:     Direccion.ARRIBA,
+        _pygame.K_DOWN:  Direccion.ABAJO,
+        _pygame.K_s:     Direccion.ABAJO,
+        _pygame.K_LEFT:  Direccion.IZQUIERDA,
+        _pygame.K_a:     Direccion.IZQUIERDA,
+        _pygame.K_RIGHT: Direccion.DERECHA,
+        _pygame.K_d:     Direccion.DERECHA,
+    }
+except ImportError:
+    # Sin pygame: el mapa de teclas queda vacío; el agente humano es inerte.
+    _TECLAS = {}
 
 
 class Humano(Agente):

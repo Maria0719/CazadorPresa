@@ -80,6 +80,11 @@ class Motor:
         self.configuracion: str = configuracion  # Configuración A o B
         self._ticks_limite: Optional[int] = ticks_limite  # Límite de ticks headless
 
+        # En modo headless (benchmark) cada tick = 1 movimiento: evita que
+        # FRAMES_POR_CELDA reduzca los movimientos efectivos de 2000 a ~250,
+        # lo que sesgaría los resultados Config A vs B en laberintos grandes.
+        self._modo_rapido: bool = ticks_limite is not None
+
         # ── Posiciones iniciales ────────────────────────────────────────────
         pos_evasor: Celda = (1, 1)              # Evasor siempre en esquina superior-izquierda
         pos_cazador: Celda = laberinto.celda_libre_lejana(pos_evasor, min_distancia=8)
@@ -89,24 +94,24 @@ class Motor:
         agente_cazador.inicializar(laberinto, pos_cazador)     # Llamar hook de inicio
 
         # ── Crear entidades ─────────────────────────────────────────────────
+        # En modo rápido (headless) arrancamos con frames_restantes=1 para que
+        # la primera decisión ocurra en el tick 1 (igual que en modo visual).
+        _frames_init = 1 if self._modo_rapido else FRAMES_POR_CELDA
+
         self.evasor = Entidad(
             celda=pos_evasor,
             agente=agente_evasor,
             rol=Rol.PRESA,
-            frames_restantes=FRAMES_POR_CELDA,
+            frames_restantes=_frames_init,
             **self._px_desde_celda(pos_evasor),    # Posición inicial en píxeles
         )
         self.cazador = Entidad(
             celda=pos_cazador,
             agente=agente_cazador,
             rol=Rol.CAZADOR,
-            frames_restantes=FRAMES_POR_CELDA,
+            frames_restantes=_frames_init,
             **self._px_desde_celda(pos_cazador),   # Posición inicial en píxeles
         )
-
-        # ── Alias de compatibilidad ─────────────────────────────────────────
-        # Algunos módulos aún usan "presa" en lugar de "evasor"
-        self.presa = self.evasor
 
         # ── Métricas ────────────────────────────────────────────────────────
         self._acumulador = AcumuladorMetricas()    # Acumulador de métricas tick a tick
@@ -147,7 +152,7 @@ class Motor:
             pos_oponente=pos_oponente,
             rol=entidad.rol,
             tiempo_restante=self.tiempo_restante(),
-            salidas=self.lab.salidas,
+            salidas=tuple(self.lab.salidas),
             tick=self.tick,
         )
 
@@ -172,7 +177,9 @@ class Motor:
         tc = self.tamano_celda
         entidad.dest_px = float(entidad.celda[1] * tc + tc // 2)
         entidad.dest_py = float(entidad.celda[0] * tc + tc // 2)
-        entidad.frames_restantes = FRAMES_POR_CELDA    # Reiniciar contador de frames
+        # En modo rápido (headless) un tick = un movimiento; en modo visual
+        # se usa FRAMES_POR_CELDA para animar suavemente el desplazamiento.
+        entidad.frames_restantes = 1 if self._modo_rapido else FRAMES_POR_CELDA
 
         # ── Registrar métricas del agente ─────────────────────────────────
         # Leer nodos expandidos y tiempo del agente si los expone
@@ -294,9 +301,3 @@ class Motor:
             ticks_totales=self.tick,
         )
 
-    # ── Propiedad de compatibilidad ────────────────────────────────────────
-
-    @property
-    def acumulador(self) -> AcumuladorMetricas:
-        """Expone el acumulador de métricas para lectura externa."""
-        return self._acumulador

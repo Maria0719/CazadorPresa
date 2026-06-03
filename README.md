@@ -18,7 +18,7 @@ numpy
 Instalar dependencias:
 
 ```bash
-pip install pygame matplotlib numpy
+pip install -r requirements.txt
 ```
 
 ---

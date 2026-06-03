@@ -55,7 +55,7 @@ import time                         # Medición de tiempo por decisión
 from collections import deque       # Cola BFS para precalcular distancias
 from typing import Optional
 
-from agentes.base import Agente, Direccion, EstadoJuego, Rol, Celda
+from agentes.base import Agente, Direccion, EstadoJuego, Rol, Celda, celda_a_direccion
 from laberinto.generador import Laberinto
 from config import DFS_PROFUNDIDAD
 
@@ -144,11 +144,15 @@ class EstrategiaDFSMemo(Agente):
         self.tiempo_ultima_decision: float = 0.0  # Tiempo de la última decisión (seg)
         self._contador_nodos: int = 0         # Contador interno durante el DFS
 
+        # Celda visitada en el tick anterior: evita oscilar entre dos posiciones
+        self._pos_anterior: Optional[Celda] = None
+
     def inicializar(self, laberinto: Laberinto, pos_inicial: Celda) -> None:
         """Guarda el laberinto y limpia el estado interno al empezar la partida."""
         self._laberinto = laberinto   # Guardar referencia al laberinto
         self._memo.clear()            # Limpiar tabla de memoización
         self._dist_cache.clear()      # Limpiar caché de distancias BFS
+        self._pos_anterior = None     # Reiniciar historial anti-oscilación
 
     def decidir_movimiento(self, estado: EstadoJuego) -> Direccion:
         """
@@ -190,20 +194,26 @@ class EstrategiaDFSMemo(Agente):
         if not vecinos:
             return Direccion.NOOP   # Sin movimientos posibles
 
-        mejor_dir: Direccion = Direccion.NOOP   # Mejor dirección encontrada
-        mejor_val: float = float("-inf")         # Utilidad de la mejor dirección
+        # Inicializar con el primer vecino válido: garantiza movimiento incluso
+        # cuando todos los valores son -inf (captura inevitable en horizonte D).
+        mejor_dir: Direccion = celda_a_direccion(estado.pos_propia, vecinos[0])
+        mejor_val: float = float("-inf")
 
         for vecino in vecinos:
-            # Evaluar el sub-estado si nos movemos a este vecino
             val = self._dfs_evasor(
-                vecino,                   # Nueva posición del evasor
-                estado.pos_oponente,      # Posición del cazador
-                self._profundidad - 1,    # Profundidad restante
+                vecino,
+                estado.pos_oponente,
+                self._profundidad - 1,
             )
+            # Penalizar levemente volver a la celda anterior para romper empates
+            # y evitar que el evasor oscile entre dos posiciones indefinidamente.
+            if vecino == self._pos_anterior:
+                val -= 0.5
             if val > mejor_val:
-                mejor_val = val                                         # Actualizar mejor utilidad
-                mejor_dir = _celda_a_direccion(estado.pos_propia, vecino)  # Guardar dirección
+                mejor_val = val
+                mejor_dir = celda_a_direccion(estado.pos_propia, vecino)
 
+        self._pos_anterior = estado.pos_propia
         return mejor_dir
 
     def _dfs_evasor(
@@ -307,13 +317,13 @@ class EstrategiaDFSMemo(Agente):
         if not vecinos_caz:
             return pos_cazador   # Sin movimientos: quedarse quieto
 
-        # Obtener distancias BFS desde el cazador
-        dist_desde_cazador = _bfs_distancias(self._laberinto, pos_cazador, self._dist_cache)
+        # BFS desde el OBJETIVO para medir qué tan cerca está cada vecino del cazador al objetivo.
+        # (BFS desde cazador daría distancia 1 a todos los vecinos → elección arbitraria.)
+        dist_desde_objetivo = _bfs_distancias(self._laberinto, objetivo, self._dist_cache)
 
-        # Elegir el vecino más cercano al objetivo
         mejor_vecino = min(
             vecinos_caz,
-            key=lambda c: dist_desde_cazador.get(c, 999),   # Menor distancia al objetivo
+            key=lambda c: dist_desde_objetivo.get(c, 999),
         )
         return mejor_vecino
 
@@ -330,20 +340,24 @@ class EstrategiaDFSMemo(Agente):
         if not vecinos:
             return Direccion.NOOP   # Sin movimientos posibles
 
-        mejor_dir: Direccion = Direccion.NOOP   # Mejor dirección encontrada
-        mejor_val: float = float("-inf")         # Utilidad de la mejor dirección
+        # Inicializar con el primer vecino válido: garantiza movimiento incluso
+        # cuando todos los valores son -inf.
+        mejor_dir: Direccion = celda_a_direccion(estado.pos_propia, vecinos[0])
+        mejor_val: float = float("-inf")
 
         for vecino in vecinos:
-            # Evaluar el sub-estado si el cazador se mueve a este vecino
             val = self._dfs_cazador(
-                vecino,                   # Nueva posición del cazador
-                estado.pos_oponente,      # Posición del evasor
-                self._profundidad - 1,    # Profundidad restante
+                vecino,
+                estado.pos_oponente,
+                self._profundidad - 1,
             )
+            if vecino == self._pos_anterior:
+                val -= 0.5
             if val > mejor_val:
-                mejor_val = val                                         # Actualizar mejor utilidad
-                mejor_dir = _celda_a_direccion(estado.pos_propia, vecino)  # Guardar dirección
+                mejor_val = val
+                mejor_dir = celda_a_direccion(estado.pos_propia, vecino)
 
+        self._pos_anterior = estado.pos_propia
         return mejor_dir
 
     def _dfs_cazador(
@@ -435,24 +449,12 @@ class EstrategiaDFSMemo(Agente):
         if not vecinos_evasor:
             return pos_evasor   # Sin movimientos: quedarse quieto
 
-        # Obtener distancias BFS desde el evasor a todos los nodos
-        dist_desde_evasor = _bfs_distancias(self._laberinto, pos_evasor, self._dist_cache)
+        # BFS desde el CAZADOR para medir qué tan lejos está cada vecino del cazador.
+        # (BFS desde evasor daría distancia 1 a todos sus vecinos → elección arbitraria.)
+        dist_desde_cazador = _bfs_distancias(self._laberinto, pos_cazador, self._dist_cache)
 
-        # Elegir el vecino más lejano del cazador
         mejor_vecino = max(
             vecinos_evasor,
-            key=lambda c: dist_desde_evasor.get(c, 0),   # Mayor distancia al cazador
+            key=lambda c: dist_desde_cazador.get(c, 0),
         )
         return mejor_vecino
-
-
-# ── Función auxiliar (usada en ambos módulos) ───────────────────────────────
-
-def _celda_a_direccion(origen: Celda, destino: Celda) -> Direccion:
-    """Convierte un par de celdas adyacentes en la Direccion correspondiente."""
-    df = destino[0] - origen[0]    # Diferencia en fila
-    dc = destino[1] - origen[1]    # Diferencia en columna
-    for d in Direccion:
-        if d.value == (df, dc):
-            return d               # Devolver la dirección que coincide
-    return Direccion.NOOP          # No corresponde a ninguna dirección válida

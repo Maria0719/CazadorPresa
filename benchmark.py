@@ -26,6 +26,7 @@ import argparse         # Parseo de argumentos de línea de comandos
 import math             # Para la curva teórica de Dijkstra (log)
 import os               # Manejo de directorios
 import statistics       # Para media y desviación estándar
+import sys              # Reconfiguracion de stdout para UTF-8 en Windows
 import time             # Medición de tiempos
 
 from agentes.base import EstadoJuego, Rol   # Estado del juego y roles
@@ -33,7 +34,7 @@ from algoritmos.dijkstra import EstrategiaDijkstra, dijkstra_puro   # Dijkstra
 from algoritmos.dfs_memo import EstrategiaDFSMemo                   # DFS memo
 from laberinto.generador import Laberinto                            # Generador
 from juego.motor import Motor, ResultadoPartida                      # Motor headless
-from metricas.registro import exportar_csv, exportar_benchmark_csv  # Exportación
+from metricas.registro import exportar_benchmark_csv  # Exportación
 from config import (
     BENCHMARK_TAMANOS, BENCHMARK_REPETICIONES, BENCHMARK_MAX_TICKS,
     SALIDAS_DIR, DFS_PROFUNDIDAD,
@@ -111,7 +112,7 @@ def medir_dfs_memo(
         pos_oponente=pos_oponente,
         rol=rol,
         tiempo_restante=999.0,   # Tiempo arbitrario (no afecta la lógica)
-        salidas=salidas,
+        salidas=tuple(salidas),
         tick=0,
     )
 
@@ -159,56 +160,55 @@ def experimento_algoritmos(
     for n in tamanos:
         print(f"  Tamaño n={n}...", end=" ", flush=True)
 
-        tiempos_dij: list[float] = []    # Tiempos de Dijkstra para este n
-        nodos_dij:   list[int]   = []    # Nodos de Dijkstra
-        tiempos_dfs: list[float] = []    # Tiempos de DFS memo
-        nodos_dfs:   list[int]   = []    # Nodos de DFS memo
+        tiempos_dij:     list[float] = []
+        nodos_dij:       list[int]   = []
+        tiempos_dfs_eva: list[float] = []   # DFS como EVASOR (Config A)
+        nodos_dfs_eva:   list[int]   = []
+        tiempos_dfs_caz: list[float] = []   # DFS como CAZADOR (Config B)
+        nodos_dfs_caz:   list[int]   = []
 
         for rep in range(repeticiones):
-            semilla = semilla_base + rep * 1000    # Semilla distinta por repetición
+            semilla = semilla_base + rep * 1000
 
-            # Generar laberinto de tamaño n×n
-            lab = Laberinto(n, n, semilla=semilla, tipo_escenario=tipo_escenario)
-
-            # Posiciones: evasor en (1,1), cazador lo más lejos posible
+            lab         = Laberinto(n, n, semilla=semilla, tipo_escenario=tipo_escenario)
             pos_evasor  = (1, 1)
             pos_cazador = lab.celda_libre_lejana(pos_evasor, min_distancia=n // 3)
             salidas     = lab.salidas
 
-            # ── Medir Dijkstra (de evasor a salida, sin pesos de peligro) ──
+            # Dijkstra puro (sin rol: mide el algoritmo base)
             t_dij, n_dij = medir_dijkstra_puro(lab, pos_evasor, salidas[0])
-            tiempos_dij.append(t_dij)    # Registrar tiempo
-            nodos_dij.append(n_dij)      # Registrar nodos
+            tiempos_dij.append(t_dij)
+            nodos_dij.append(n_dij)
 
-            # ── Medir DFS Memoizado (como evasor) ─────────────────────────
-            t_dfs, n_dfs = medir_dfs_memo(lab, pos_evasor, pos_cazador, salidas, Rol.PRESA)
-            tiempos_dfs.append(t_dfs)    # Registrar tiempo
-            nodos_dfs.append(n_dfs)      # Registrar nodos
+            # DFS como EVASOR (rol que tiene en Config A)
+            t_eva, n_eva = medir_dfs_memo(lab, pos_evasor, pos_cazador, salidas, Rol.PRESA)
+            tiempos_dfs_eva.append(t_eva)
+            nodos_dfs_eva.append(n_eva)
 
-        # ── Calcular estadísticas ──────────────────────────────────────────
-        filas.append({
-            "tamano_n":       n,
-            "tipo_escenario": tipo_escenario,
-            "algoritmo":      "Dijkstra",
-            "repeticiones":   repeticiones,
-            "tiempo_medio_s": round(statistics.mean(tiempos_dij), 8),
-            "tiempo_std_s":   round(statistics.stdev(tiempos_dij) if repeticiones > 1 else 0.0, 8),
-            "nodos_medio":    round(statistics.mean(nodos_dij), 1),
-            "nodos_std":      round(statistics.stdev(nodos_dij) if repeticiones > 1 else 0.0, 1),
-        })
-        filas.append({
-            "tamano_n":       n,
-            "tipo_escenario": tipo_escenario,
-            "algoritmo":      "DFS_Memo",
-            "repeticiones":   repeticiones,
-            "tiempo_medio_s": round(statistics.mean(tiempos_dfs), 8),
-            "tiempo_std_s":   round(statistics.stdev(tiempos_dfs) if repeticiones > 1 else 0.0, 8),
-            "nodos_medio":    round(statistics.mean(nodos_dfs), 1),
-            "nodos_std":      round(statistics.stdev(nodos_dfs) if repeticiones > 1 else 0.0, 1),
-        })
+            # DFS como CAZADOR (rol que tiene en Config B)
+            t_caz, n_caz = medir_dfs_memo(lab, pos_cazador, pos_evasor, salidas, Rol.CAZADOR)
+            tiempos_dfs_caz.append(t_caz)
+            nodos_dfs_caz.append(n_caz)
+
+        def _fila(algoritmo, tiempos, nodos):
+            return {
+                "tamano_n":       n,
+                "tipo_escenario": tipo_escenario,
+                "algoritmo":      algoritmo,
+                "repeticiones":   repeticiones,
+                "tiempo_medio_s": round(statistics.mean(tiempos), 8),
+                "tiempo_std_s":   round(statistics.stdev(tiempos) if repeticiones > 1 else 0.0, 8),
+                "nodos_medio":    round(statistics.mean(nodos), 1),
+                "nodos_std":      round(statistics.stdev(nodos) if repeticiones > 1 else 0.0, 1),
+            }
+
+        filas.append(_fila("Dijkstra",     tiempos_dij,     nodos_dij))
+        filas.append(_fila("DFS_Evasor",   tiempos_dfs_eva, nodos_dfs_eva))
+        filas.append(_fila("DFS_Cazador",  tiempos_dfs_caz, nodos_dfs_caz))
 
         print(f"Dijkstra: {1000*statistics.mean(tiempos_dij):.3f} ms | "
-              f"DFS: {1000*statistics.mean(tiempos_dfs):.3f} ms")
+              f"DFS-Eva: {1000*statistics.mean(tiempos_dfs_eva):.3f} ms | "
+              f"DFS-Caz: {1000*statistics.mean(tiempos_dfs_caz):.3f} ms")
 
     return filas
 
@@ -310,35 +310,44 @@ def experimento_partidas(
 
 def _curva_teorica_dijkstra(n_vals: list[int], t_med: list[float]) -> list[float]:
     """
-    Calcula la curva teórica de Dijkstra: T(n) ≈ C · n² · log₂(n).
+    Calcula la curva teórica de Dijkstra: T(n) ≈ C · n² · log₂(n²).
 
-    Ajusta la constante C usando el primer punto experimental.
+    Ajusta C por mínimos cuadrados sobre todos los puntos experimentales
+    (más robusto que usar solo el primer punto, que puede ser outlier).
     Complejidad: O(n² log n) ← O((V+E) log V) para cuadrícula n×n.
     """
-    if not n_vals or not t_med or t_med[0] == 0:
-        return [0.0] * len(n_vals)       # Sin datos: devolver ceros
+    if not n_vals or not t_med:
+        return [0.0] * len(n_vals)
 
-    n0, t0 = n_vals[0], t_med[0]        # Primer punto para ajuste
-    # Calcular constante C del primer punto: t0 = C * n0² * log(n0²)
-    C = t0 / (n0 ** 2 * math.log2(n0 ** 2 + 1))  # +1 para evitar log(0)
-    # Calcular curva teórica para todos los tamaños
-    return [C * (n ** 2) * math.log2(n ** 2 + 1) for n in n_vals]
+    # Vector de la forma funcional evaluada en cada n
+    x = np.array([n ** 2 * math.log2(n ** 2 + 1) for n in n_vals])
+    y = np.array(t_med)
+
+    # Mínimos cuadrados sin intercepto: C = (x·y) / (x·x)
+    denom = float(np.dot(x, x))
+    C = float(np.dot(x, y) / denom) if denom > 0 else 0.0
+
+    return [C * n ** 2 * math.log2(n ** 2 + 1) for n in n_vals]
 
 
 def _curva_teorica_dfs(n_vals: list[int], t_med: list[float]) -> list[float]:
     """
     Calcula la curva teórica del DFS memo: T(n) ≈ C · D · n² (práctica).
 
-    Ajusta la constante C usando el primer punto experimental.
+    Ajusta C por mínimos cuadrados sobre todos los puntos experimentales.
     Complejidad práctica: O(D · n²) donde D = DFS_PROFUNDIDAD (constante).
     """
-    if not n_vals or not t_med or t_med[0] == 0:
+    if not n_vals or not t_med:
         return [0.0] * len(n_vals)
 
-    n0, t0 = n_vals[0], t_med[0]
-    D = DFS_PROFUNDIDAD                 # Profundidad máxima del DFS
-    C = t0 / (D * n0 ** 2 + 1)         # Ajustar C: t0 = C * D * n0²
-    return [C * D * (n ** 2) for n in n_vals]
+    D = DFS_PROFUNDIDAD
+    x = np.array([D * n ** 2 for n in n_vals])
+    y = np.array(t_med)
+
+    denom = float(np.dot(x, x))
+    C = float(np.dot(x, y) / denom) if denom > 0 else 0.0
+
+    return [C * D * n ** 2 for n in n_vals]
 
 
 def generar_graficas(filas_algoritmos: list[dict]) -> None:
@@ -359,19 +368,24 @@ def generar_graficas(filas_algoritmos: list[dict]) -> None:
 
     # Separar datos por algoritmo
     dij_filas = [f for f in filas_algoritmos if f["algoritmo"] == "Dijkstra"]
-    dfs_filas = [f for f in filas_algoritmos if f["algoritmo"] == "DFS_Memo"]
+    eva_filas = [f for f in filas_algoritmos if f["algoritmo"] == "DFS_Evasor"]
+    caz_filas = [f for f in filas_algoritmos if f["algoritmo"] == "DFS_Cazador"]
 
-    # Extraer vectores para graficar
-    ns_dij   = [f["tamano_n"]       for f in dij_filas]    # Tamaños
-    t_dij    = [f["tiempo_medio_s"] for f in dij_filas]    # Tiempos medios
-    std_dij  = [f["tiempo_std_s"]   for f in dij_filas]    # Desviación estándar
-    ns_dfs   = [f["tamano_n"]       for f in dfs_filas]
-    t_dfs    = [f["tiempo_medio_s"] for f in dfs_filas]
-    std_dfs  = [f["tiempo_std_s"]   for f in dfs_filas]
+    def _extraer(filas):
+        return (
+            [f["tamano_n"]       for f in filas],
+            [f["tiempo_medio_s"] for f in filas],
+            [f["tiempo_std_s"]   for f in filas],
+        )
 
-    # Curvas teóricas
+    ns_dij, t_dij, std_dij = _extraer(dij_filas)
+    ns_eva, t_eva, std_eva = _extraer(eva_filas)
+    ns_caz, t_caz, std_caz = _extraer(caz_filas)
+
+    # Curvas teóricas ajustadas por mínimos cuadrados
     t_teo_dij = _curva_teorica_dijkstra(ns_dij, t_dij)
-    t_teo_dfs = _curva_teorica_dfs(ns_dfs, t_dfs)
+    t_teo_eva = _curva_teorica_dfs(ns_eva, t_eva)
+    t_teo_caz = _curva_teorica_dfs(ns_caz, t_caz)
 
     # ── Gráfica 1: Dijkstra ────────────────────────────────────────────────
     fig, ax = plt.subplots(figsize=(9, 5))
@@ -386,20 +400,24 @@ def generar_graficas(filas_algoritmos: list[dict]) -> None:
     ax.grid(True, alpha=0.4)
     ruta_dij = os.path.join(SALIDAS_DIR, "grafica_dijkstra.png")
     fig.tight_layout()
-    fig.savefig(ruta_dij, dpi=150)    # Guardar con 150 dpi para el informe
+    fig.savefig(ruta_dij, dpi=150)
     plt.close(fig)
     print(f"  Guardada: {ruta_dij}")
 
-    # ── Gráfica 2: DFS Memoizado ───────────────────────────────────────────
+    # ── Gráfica 2: DFS Memoizado (ambos roles) ─────────────────────────────
     fig, ax = plt.subplots(figsize=(9, 5))
-    ax.errorbar(ns_dfs, t_dfs, yerr=std_dfs, fmt="s-",
-                color="mediumseagreen", capsize=4, label="Experimental")
-    ax.plot(ns_dfs, t_teo_dfs, "--", color="darkorange",
-            label=r"Teórico: $O(D \cdot n^2)$")
+    ax.errorbar(ns_eva, t_eva, yerr=std_eva, fmt="s-",
+                color="mediumseagreen", capsize=4, label="DFS Evasor (exp.)")
+    ax.plot(ns_eva, t_teo_eva, "--", color="mediumseagreen", alpha=0.6,
+            label=r"Teórico Evasor $O(D \cdot n^2)$")
+    ax.errorbar(ns_caz, t_caz, yerr=std_caz, fmt="^-",
+                color="darkorchid", capsize=4, label="DFS Cazador (exp.)")
+    ax.plot(ns_caz, t_teo_caz, "--", color="darkorchid", alpha=0.6,
+            label=r"Teórico Cazador $O(D \cdot n^2)$")
     ax.set_xlabel("Tamaño del laberinto (n)", fontsize=13)
     ax.set_ylabel("Tiempo de cómputo (segundos)", fontsize=13)
-    ax.set_title("DFS Memoizado — Tiempo de cómputo vs Tamaño de entrada", fontsize=14)
-    ax.legend(fontsize=12)
+    ax.set_title("DFS Memoizado — Tiempo vs Tamaño (Evasor y Cazador)", fontsize=14)
+    ax.legend(fontsize=11)
     ax.grid(True, alpha=0.4)
     ruta_dfs = os.path.join(SALIDAS_DIR, "grafica_dfs_memo.png")
     fig.tight_layout()
@@ -407,20 +425,22 @@ def generar_graficas(filas_algoritmos: list[dict]) -> None:
     plt.close(fig)
     print(f"  Guardada: {ruta_dfs}")
 
-    # ── Gráfica 3: Comparativa ambos algoritmos ───────────────────────────
+    # ── Gráfica 3: Comparativa Dijkstra vs DFS ────────────────────────────
     fig, ax = plt.subplots(figsize=(10, 5))
     ax.errorbar(ns_dij, t_dij, yerr=std_dij, fmt="o-",
                 color="steelblue", capsize=4, label="Dijkstra (exp.)")
     ax.plot(ns_dij, t_teo_dij, "--", color="steelblue", alpha=0.5,
             label=r"Dijkstra teórico $O(n^2\log n)$")
-    ax.errorbar(ns_dfs, t_dfs, yerr=std_dfs, fmt="s-",
-                color="mediumseagreen", capsize=4, label="DFS Memo (exp.)")
-    ax.plot(ns_dfs, t_teo_dfs, "--", color="mediumseagreen", alpha=0.5,
-            label=r"DFS Memo teórico $O(D \cdot n^2)$")
+    ax.errorbar(ns_eva, t_eva, yerr=std_eva, fmt="s-",
+                color="mediumseagreen", capsize=4, label="DFS Evasor (exp.)")
+    ax.plot(ns_eva, t_teo_eva, "--", color="mediumseagreen", alpha=0.5,
+            label=r"DFS teórico $O(D \cdot n^2)$")
+    ax.errorbar(ns_caz, t_caz, yerr=std_caz, fmt="^-",
+                color="darkorchid", capsize=4, label="DFS Cazador (exp.)")
     ax.set_xlabel("Tamaño del laberinto (n)", fontsize=13)
     ax.set_ylabel("Tiempo de cómputo (segundos)", fontsize=13)
-    ax.set_title("Comparativa: Dijkstra vs DFS Memoizado", fontsize=14)
-    ax.legend(fontsize=11)
+    ax.set_title("Comparativa: Dijkstra vs DFS Memoizado (ambos roles)", fontsize=14)
+    ax.legend(fontsize=10)
     ax.grid(True, alpha=0.4)
     ruta_comp = os.path.join(SALIDAS_DIR, "grafica_comparativa.png")
     fig.tight_layout()
@@ -505,6 +525,13 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     """Función principal del benchmark."""
+    # Forzar UTF-8 en la consola de Windows para evitar mojibake con acentos
+    for _s in (sys.stdout, sys.stderr):
+        try:
+            _s.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
+
     args = parse_args()
 
     # Leer parámetros de argumentos o de config.py
