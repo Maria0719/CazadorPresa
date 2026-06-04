@@ -324,7 +324,9 @@ def ejecutar_partida(
     tamano_celda: int = TAMANO_CELDA,
     agente_cazador_externo: Agente | None = None,
     agente_evasor_externo: Agente | None = None,
-) -> bool:
+    finalizar_al_terminar: bool = False,
+    retornar_resultado: bool = False,
+) -> bool | ResultadoPartida | None:
     """
     Ejecuta una partida completa con rendering Pygame.
 
@@ -333,8 +335,12 @@ def ejecutar_partida(
         agente_evasor_externo  : Agente externo para el evasor  (None = usar IA interna).
 
     Returns:
-        True  → el usuario quiere volver al menú / reiniciar.
-        False → el usuario quiere salir del programa.
+        Si retornar_resultado=False:
+            True  → el usuario quiere volver al menú / reiniciar.
+            False → el usuario quiere salir del programa.
+        Si retornar_resultado=True:
+            ResultadoPartida → partida finalizada.
+            None → salida anticipada (cerró ventana o ESC/R).
     """
     # Crear laberinto con el tamaño, escenario y semilla elegidos
     lab = Laberinto(tamano_n, tamano_n, semilla, tipo_escenario=tipo_escenario)
@@ -357,12 +363,12 @@ def ejecutar_partida(
         # ── Eventos de Pygame ──────────────────────────────────────────────
         for evento in pygame.event.get():
             if evento.type == pygame.QUIT:
-                return False     # Cerrar ventana: salir del programa
+                return None if retornar_resultado else False
             if evento.type == pygame.KEYDOWN:
                 if evento.key == pygame.K_ESCAPE:
-                    return True  # ESC: volver al menú
+                    return None if retornar_resultado else True
                 if evento.key == pygame.K_r:
-                    return True  # R: reiniciar (volver al menú)
+                    return None if retornar_resultado else True
                 motor.registrar_tecla(evento.key)    # Pasar tecla al motor
 
         # ── Actualización del estado del juego ─────────────────────────────
@@ -385,6 +391,9 @@ def ejecutar_partida(
                 fuentes["grande"], fuentes["chica"],
                 ancho_ventana, alto_ventana,
             )
+            if finalizar_al_terminar:
+                pygame.display.flip()
+                return motor.resultado if retornar_resultado else True
 
         pygame.display.flip()       # Actualizar pantalla
         reloj.tick(FPS)             # Controlar framerate
@@ -433,6 +442,123 @@ def ejecutar_subMenu(
         reloj.tick(FPS)
 
 
+# -- Ejecutar Partida Torneo
+def ejecutar_partida_torneo(
+    url_cazador: str,
+    url_presa: str,
+    tamano_n: int,
+    escenario: int,
+):
+    """
+    Ejecuta una partida usando dos agentes remotos.
+    """
+    from agentes.agente_remoto import AgenteRemoto
+
+    pygame.init()
+
+    pygame.display.set_caption(
+        "TORNEO DE ALGORITMOS"
+    )
+
+    info = pygame.display.Info()
+
+    ventana_obj = min(
+        info.current_w * 85 // 100,
+        info.current_h * 85 // 100 - ALTO_HUD,
+        900
+    )
+
+    tamano_celda = max(
+        4,
+        min(
+            64,
+            ventana_obj // tamano_n
+        )
+    )
+    
+    import config
+
+    config.TAMANO_CELDA = tamano_celda
+
+    print("TAMANO CELDA MOTOR:", tamano_celda)
+    print("TAMANO CELDA CONFIG:", config.TAMANO_CELDA)
+
+    ancho_ventana = tamano_n * tamano_celda
+    alto_ventana = (
+        tamano_n * tamano_celda
+        + ALTO_HUD
+    )
+
+    pantalla = pygame.display.set_mode(
+        (
+            ancho_ventana,
+            alto_ventana
+        )
+    )
+
+    reloj = pygame.time.Clock()
+
+    fuentes = {
+        "titulo": pygame.font.SysFont(
+            "consolas",
+            36,
+            bold=True
+        ),
+        "opcion": pygame.font.SysFont(
+            "consolas",
+            24
+        ),
+        "grande": pygame.font.SysFont(
+            "consolas",
+            38,
+            bold=True
+        ),
+        "hud": pygame.font.SysFont(
+            "consolas",
+            18
+        ),
+        "chica": pygame.font.SysFont(
+            "consolas",
+            15
+        ),
+    }
+
+    agente_cazador = AgenteRemoto(
+        Rol.CAZADOR,
+        url_cazador
+    )
+
+    agente_presa = AgenteRemoto(
+        Rol.PRESA,
+        url_presa
+    )
+
+    resultado = ejecutar_partida(
+        pantalla,
+        reloj,
+        fuentes,
+        SEMILLA,
+        2,          # IA vs IA
+        "A",        # Config cualquiera
+        escenario,
+        ancho_ventana,
+        alto_ventana,
+        tamano_n=tamano_n,
+        tamano_celda=tamano_celda,
+        agente_cazador_externo=agente_cazador,
+        agente_evasor_externo=agente_presa,
+        finalizar_al_terminar=True,
+        retornar_resultado=True,
+    )
+
+    if isinstance(resultado, ResultadoPartida):
+        pygame.time.wait(3000)
+        pygame.quit()
+        return resultado
+
+    pygame.quit()
+    return None
+crear_agentes
 # ── Bucle principal ────────────────────────────────────────────────────────
 
 def main() -> None:

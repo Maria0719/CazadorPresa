@@ -36,10 +36,10 @@ from agentes.base import Agente, Direccion, EstadoJuego, Rol, Celda
 
 class CazadorBFS(Agente):
     """
-    Agente cazador que usa BFS para encontrar el camino más corto al evasor.
+    Agente BFS con comportamiento dependiente del rol.
 
-    Hereda de Agente (obligatorio para todos los agentes externos).
-    Solo implementa decidir_movimiento; los demás métodos son opcionales.
+    - Rol.CAZADOR: persigue al oponente (pos_oponente).
+    - Rol.PRESA  : busca la salida más cercana (estado.salidas).
     """
 
     def __init__(self, rol: Rol) -> None:
@@ -50,6 +50,7 @@ class CazadorBFS(Agente):
             rol: Rol.CAZADOR o Rol.PRESA (asignado automáticamente por main.py).
         """
         super().__init__(rol)    # Llamar al constructor de la clase base Agente
+        self._ultimo_objetivo: Celda | None = None
 
     def decidir_movimiento(self, estado: EstadoJuego) -> Direccion:
         """
@@ -64,18 +65,40 @@ class CazadorBFS(Agente):
         Returns:
             Direccion hacia la que moverse (NOOP si no hay camino).
         """
-        # Ejecutar BFS desde la posición propia hasta el oponente
-        siguiente = self._bfs_primer_paso(
-            estado.laberinto,       # El mapa del laberinto
-            estado.pos_propia,      # Posición de este agente
-            estado.pos_oponente,    # Posición del oponente (destino)
-        )
+        objetivo: Celda | None = None
+
+        if self.rol == Rol.CAZADOR:
+            # Ejecutar BFS desde la posición propia hasta el oponente
+            siguiente = self._bfs_primer_paso(
+                estado.laberinto,       # El mapa del laberinto
+                estado.pos_propia,      # Posición de este agente
+                estado.pos_oponente,    # Posición del oponente (destino)
+            )
+            objetivo = estado.pos_oponente
+        else:
+            # Ejecutar BFS hacia la salida más cercana
+            siguiente = self._bfs_primer_paso_a_salidas(
+                estado.laberinto,
+                estado.pos_propia,
+                estado.salidas,
+            )
+            objetivo = self._ultimo_objetivo
 
         if siguiente is None:
-            return Direccion.NOOP   # Sin camino: quedarse quieto
+            direccion = Direccion.NOOP   # Sin camino: quedarse quieto
+        else:
+            # Convertir la celda siguiente en una dirección de movimiento
+            direccion = self._celda_a_direccion(estado.pos_propia, siguiente)
 
-        # Convertir la celda siguiente en una dirección de movimiento
-        return self._celda_a_direccion(estado.pos_propia, siguiente)
+        print(f"ROL: {self.rol.name}")
+        print(f"POSICION: {estado.pos_propia}")
+        print(f"OPONENTE: {estado.pos_oponente}")
+        print(f"SALIDAS: {list(estado.salidas)}")
+        print(f"OBJETIVO: {objetivo}")
+        print(f"MOVIMIENTO: {direccion.name}")
+        print()
+
+        return direccion
 
     # ── BFS ───────────────────────────────────────────────────────────────────
 
@@ -123,6 +146,45 @@ class CazadorBFS(Agente):
                     return self._primer_paso(visitados, origen, destino)
 
         return None   # No existe camino entre origen y destino
+
+    def _bfs_primer_paso_a_salidas(
+        self,
+        laberinto,
+        origen: Celda,
+        salidas: tuple[Celda, ...],
+    ):
+        """
+        BFS hacia la salida más cercana; devuelve el primer paso del camino.
+
+        Returns:
+            Celda del primer paso hacia la salida, o None si no hay camino.
+        """
+        self._ultimo_objetivo = None
+
+        if not salidas:
+            return None
+
+        objetivos = set(salidas)
+        if origen in objetivos:
+            return None
+
+        visitados: dict[Celda, Celda | None] = {origen: None}
+        cola: deque[Celda] = deque([origen])
+
+        while cola:
+            actual = cola.popleft()
+            for vecino in laberinto.vecinos_transitables(actual):
+                if vecino in visitados:
+                    continue
+
+                visitados[vecino] = actual
+                cola.append(vecino)
+
+                if vecino in objetivos:
+                    self._ultimo_objetivo = vecino
+                    return self._primer_paso(visitados, origen, vecino)
+
+        return None
 
     @staticmethod
     def _primer_paso(

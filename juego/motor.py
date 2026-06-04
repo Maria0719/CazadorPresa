@@ -25,7 +25,6 @@ from laberinto.generador import Laberinto
 from metricas.registro import AcumuladorMetricas, RegistroPartida
 from config import FRAMES_POR_CELDA, TIEMPO_LIMITE_SEG
 
-
 class ResultadoPartida(Enum):
     """Estado de la partida: en curso, gana cazador o gana evasor."""
     EN_CURSO      = auto()   # La partida aún no ha terminado

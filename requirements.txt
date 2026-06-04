@@ -1,3 +1,5 @@
 pygame>=2.0
 matplotlib>=3.5
 numpy>=1.22
+flask
+requests
