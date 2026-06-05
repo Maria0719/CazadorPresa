@@ -27,6 +27,7 @@ PUERTO_AGENTE = 5003
 # ==================================================
 
 def obtener_ip_local():
+    # Conecta UDP sin enviar datos para descubrir la IP local de la interfaz activa
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
@@ -34,7 +35,7 @@ def obtener_ip_local():
         s.close()
         return ip
     except Exception:
-        return "127.0.0.1"
+        return "127.0.0.1"   # Fallback si no hay red
 
 
 def registrar_en_torneo():
@@ -116,18 +117,18 @@ app = Flask(__name__)
 
 @app.route("/movimiento", methods=["POST"])
 def movimiento():
-    datos = request.json
+    datos = request.json   # Estado del juego enviado por el motor
 
     mapa = datos["laberinto"]
 
-    lab = LaberintoRemoto(
+    lab = LaberintoRemoto(   # Reconstruir laberinto desde JSON
         filas=mapa["filas"],
         cols=mapa["cols"],
         grid=mapa["grid"],
         salidas=mapa["salidas"],
     )
 
-    rol = Rol[datos["rol"]]
+    rol = Rol[datos["rol"]]   # String → enum Rol
 
     agente = AEstrellaExterno(rol)
 
@@ -146,9 +147,9 @@ def movimiento():
         tick=datos["tick"],
     )
 
-    direccion = agente.decidir_movimiento(estado)
+    direccion = agente.decidir_movimiento(estado)   # Calcular movimiento con A*
 
-    return jsonify({"direccion": direccion.name})
+    return jsonify({"direccion": direccion.name})   # Devolver dirección como string
 
 
 @app.route("/ping")

@@ -10,7 +10,7 @@ app = Flask(__name__)
 # Equipos registrados
 # ==================================================
 
-equipos_registrados = []
+equipos_registrados = []   # Lista en memoria: se pierde al reiniciar el servidor
 
 
 # ==================================================
@@ -18,13 +18,14 @@ equipos_registrados = []
 # ==================================================
 
 def buscar_equipo(nombre: str):
+    # Buscar un equipo por nombre para decidir si actualizar o insertar
 
     for equipo in equipos_registrados:
 
         if equipo["nombre"] == nombre:
             return equipo
 
-    return None
+    return None   # No encontrado
 
 
 # ==================================================
@@ -71,7 +72,7 @@ def registrar():
     equipo_existente = buscar_equipo(nombre)
 
     if equipo_existente:
-
+        # Equipo ya registrado: actualizar sus datos en lugar de duplicarlo
         equipo_existente["algoritmo"] = algoritmo
         equipo_existente["url"] = url
         equipo_existente["ultima_actualizacion"] = (
@@ -82,6 +83,7 @@ def registrar():
             "mensaje": "equipo actualizado"
         })
 
+    # Nuevo equipo: agregar a la lista con fecha de registro
     equipos_registrados.append({
         "nombre": nombre,
         "algoritmo": algoritmo,
@@ -126,12 +128,13 @@ def equipos():
     return jsonify(resultado)
 
 def verificar_equipo(url):
+    # Verificar si el agente en `url` responde al endpoint /ping
 
     try:
 
         respuesta = requests.get(
             f"{url}/ping",
-            timeout=2
+            timeout=2   # Timeout corto para no bloquear el listado
         )
 
         if respuesta.status_code == 200:
@@ -141,7 +144,7 @@ def verificar_equipo(url):
 
     except Exception:
 
-        return "OFFLINE"
+        return "OFFLINE"   # Sin respuesta = agente caído o no iniciado
 # ==================================================
 # Inicio
 # ==================================================

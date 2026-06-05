@@ -16,7 +16,7 @@ NOMBRE_GRUPO = "Grupo DFS Memo"
 
 ALGORITMO = "DFS Memo"
 
-IP_SERVIDOR_TORNEO = "192.168.1.11"
+IP_SERVIDOR_TORNEO = "172.20.10.2"
 
 PUERTO_TORNEO = 6000
 
@@ -27,6 +27,7 @@ PUERTO_AGENTE = 5005
 # ==================================================
 
 def obtener_ip_local():
+    # Conecta UDP sin enviar datos para descubrir la IP local de la interfaz activa
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
@@ -34,7 +35,7 @@ def obtener_ip_local():
         s.close()
         return ip
     except Exception:
-        return "127.0.0.1"
+        return "127.0.0.1"   # Fallback si no hay red
 
 
 def registrar_en_torneo():
@@ -146,13 +147,14 @@ def movimiento():
         tick=datos["tick"],
     )
 
-    direccion = agente.decidir_movimiento(estado)
+    direccion = agente.decidir_movimiento(estado)   # Calcular movimiento con DFS Memo
 
-    return jsonify({"direccion": direccion.name})
+    return jsonify({"direccion": direccion.name})   # Devolver dirección como string
 
 
 @app.route("/ping")
 def ping():
+    # Endpoint de salud: el servidor de torneo lo usa para detectar ONLINE/OFFLINE
     return {
         "estado": "ok",
         "grupo": NOMBRE_GRUPO,
@@ -165,10 +167,10 @@ def ping():
 # ==================================================
 
 if __name__ == "__main__":
-    registrar_en_torneo()
+    registrar_en_torneo()   # Registrarse en el servidor de torneo al iniciar
 
     app.run(
-        host="0.0.0.0",
+        host="0.0.0.0",   # Escuchar en todas las interfaces de red
         port=PUERTO_AGENTE,
         debug=False,
     )

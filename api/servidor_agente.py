@@ -36,6 +36,7 @@ from agentes_externos.cazador_bfs import CazadorBFS
 # ==================================================
 
 def obtener_ip_local():
+    # Truco UDP: conectar a DNS de Google (sin enviar datos) para descubrir la IP local
 
     try:
 
@@ -46,7 +47,7 @@ def obtener_ip_local():
 
         s.connect(("8.8.8.8", 80))
 
-        ip = s.getsockname()[0]
+        ip = s.getsockname()[0]   # La IP local del socket creado
 
         s.close()
 
@@ -54,7 +55,7 @@ def obtener_ip_local():
 
     except Exception:
 
-        return "127.0.0.1"
+        return "127.0.0.1"   # Fallback si no hay red
 
 
 def registrar_en_torneo():
@@ -167,18 +168,18 @@ app = Flask(__name__)
 
 @app.route("/movimiento", methods=["POST"])
 def movimiento():
-    datos = request.json
+    datos = request.json   # Recibir estado del juego serializado desde el motor
 
     mapa = datos["laberinto"]
 
-    lab = LaberintoRemoto(
+    lab = LaberintoRemoto(   # Reconstruir el laberinto desde los datos JSON
         filas=mapa["filas"],
         cols=mapa["cols"],
         grid=mapa["grid"],
         salidas=mapa["salidas"],
     )
 
-    rol = Rol[datos["rol"]]
+    rol = Rol[datos["rol"]]   # Convertir string al enum Rol
 
     agente = CazadorBFS(rol)
 
@@ -209,7 +210,7 @@ def movimiento():
     )
 
     direccion = (
-        agente.decidir_movimiento(
+        agente.decidir_movimiento(   # Delegar la decisión al algoritmo
             estado
         )
     )
@@ -217,14 +218,14 @@ def movimiento():
     return jsonify(
         {
             "direccion":
-            direccion.name
+            direccion.name   # Devolver el nombre del enum como string
         }
     )
 
 
 @app.route("/ping")
 def ping():
-
+    # Endpoint de verificación de salud: el servidor de torneo lo usa para detectar ONLINE/OFFLINE
     return {
         "estado": "ok",
         "grupo": NOMBRE_GRUPO,
@@ -238,10 +239,10 @@ def ping():
 
 if __name__ == "__main__":
 
-    registrar_en_torneo()
+    registrar_en_torneo()   # Anunciarse al servidor de torneo al iniciar
 
     app.run(
-        host="0.0.0.0",
+        host="0.0.0.0",   # Escuchar en todas las interfaces (accesible en red local)
         port=PUERTO_AGENTE,
         debug=False,
     )

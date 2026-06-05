@@ -2,7 +2,7 @@ import requests
 from juego.motor import ResultadoPartida
 from main import ejecutar_partida_torneo
 
-URL_TORNEO = "http://127.0.0.1:6000"
+URL_TORNEO = "http://127.0.0.1:6000"   # Dirección del servidor_torneo.py
 
 ESCENARIOS = {
     1: "Con obstáculos",
@@ -11,6 +11,7 @@ ESCENARIOS = {
 }
 
 def obtener_equipos_online():
+    # Consultar el servidor de torneo y filtrar solo los equipos con estado ONLINE
 
     try:
 
@@ -26,7 +27,7 @@ def obtener_equipos_online():
         return [
             e
             for e in equipos
-            if e["estado"] == "ONLINE"
+            if e["estado"] == "ONLINE"   # Solo equipos que respondieron al /ping
         ]
 
     except Exception as e:
@@ -43,6 +44,7 @@ def seleccionar_equipo(
     equipos,
     mensaje
 ):
+    # Leer un número de la consola hasta que sea un índice válido
 
     while True:
 
@@ -51,7 +53,7 @@ def seleccionar_equipo(
             opcion = int(input(mensaje))
 
             if 1 <= opcion <= len(equipos):
-                return equipos[opcion - 1]
+                return equipos[opcion - 1]   # Devolver el equipo elegido
 
         except:
             pass
@@ -60,6 +62,7 @@ def seleccionar_equipo(
 
 
 def seleccionar_tamano():
+    # Leer el tamaño del laberinto; si es par, ajustar al siguiente impar
 
     while True:
 
@@ -74,7 +77,7 @@ def seleccionar_tamano():
             if n >= 5:
 
                 if n % 2 == 0:
-                    n += 1
+                    n += 1   # El generador requiere tamaño impar
 
                 return n
 
@@ -103,7 +106,7 @@ def seleccionar_escenario():
             )
 
             if opcion in ESCENARIOS:
-                return opcion - 1
+                return opcion - 1   # Convertir a índice 0-based que usa el motor
 
         except:
             pass
@@ -189,6 +192,7 @@ def main():
     print("Iniciando partida...")
     print()
 
+    # Ejecutar la partida con los agentes remotos seleccionados
     resultado = ejecutar_partida_torneo(
         cazador["url"],
         presa["url"],

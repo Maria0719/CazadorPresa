@@ -3,10 +3,11 @@ from juego.motor import ResultadoPartida
 from main import ejecutar_partida_torneo
 from torneo import seleccionar_escenario, seleccionar_tamano, ESCENARIOS
 
-URL_TORNEO = "http://127.0.0.1:6000"
+URL_TORNEO = "http://127.0.0.1:6000"   # Dirección del servidor de torneo
 
 
 def obtener_equipos_online():
+    # Obtener equipos online sin manejo de errores (lanza excepción si el torneo no responde)
 
     r = requests.get(
         f"{URL_TORNEO}/equipos",
@@ -18,7 +19,7 @@ def obtener_equipos_online():
     return [
         e
         for e in r.json()
-        if e["estado"] == "ONLINE"
+        if e["estado"] == "ONLINE"   # Solo equipos con servidor activo
     ]
 
 
@@ -26,6 +27,7 @@ def seleccionar_equipo(
     equipos,
     mensaje
 ):
+    # Devuelve el ÍNDICE del equipo elegido (a diferencia de torneo.py que devuelve el objeto)
 
     while True:
 
@@ -36,7 +38,7 @@ def seleccionar_equipo(
             )
 
             if 1 <= opcion <= len(equipos):
-                return opcion - 1
+                return opcion - 1   # Índice 0-based
 
         except:
             pass
@@ -82,10 +84,10 @@ def main():
     )
 
     bestia = equipos.pop(
-        indice_bestia
+        indice_bestia   # Sacar la bestia inicial de la lista de retadores
     )
 
-    cola = equipos
+    cola = equipos   # Los equipos restantes son los retadores en orden
 
     print()
     print(
@@ -111,7 +113,7 @@ def main():
 
     while cola:
 
-        retador = cola.pop(0)
+        retador = cola.pop(0)   # Siguiente retador en la cola (FIFO)
 
         print("=" * 50)
         print(
@@ -121,21 +123,22 @@ def main():
         )
         print("=" * 50)
 
+        # La bestia siempre juega como CAZADOR; el retador como PRESA
         print()
         print(f"BESTIA ACTUAL  : {bestia['nombre']} (CAZADOR)")
         print(f"RETADOR ACTUAL : {retador['nombre']} (PRESA)")
 
         resultado = ejecutar_partida_torneo(
-            bestia["url"],
-            retador["url"],
+            bestia["url"],    # Cazador = bestia vigente
+            retador["url"],   # Presa = retador
             tamano,
             escenario,
         )
 
         if resultado == ResultadoPartida.GANA_CAZADOR:
-            ganador = bestia
+            ganador = bestia   # La bestia defiende su título
         elif resultado == ResultadoPartida.GANA_EVASOR:
-            ganador = retador
+            ganador = retador  # El retador derrota a la bestia
         else:
             print("\nPartida cancelada o sin resultado")
             break
@@ -143,7 +146,7 @@ def main():
         print(f"GANADOR        : {ganador['nombre']}")
 
         if ganador is retador:
-            bestia = retador
+            bestia = retador   # El retador toma el trono
             print(f"NUEVA BESTIA   : {bestia['nombre']}")
         else:
             print(f"NUEVA BESTIA   : {bestia['nombre']}")

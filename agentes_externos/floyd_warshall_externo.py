@@ -18,19 +18,20 @@ class FloydWarshallExterno(Agente):
         self._dist: list[list[float]] = []
 
     def inicializar(self, laberinto, pos_inicial: Celda) -> None:
+        # Precomputar todas las distancias mínimas (costoso: O(n^6) en laberinto n×n)
         self._vertices, self._indice = self._construir_vertices(laberinto)
         self._dist = self._construir_matriz(laberinto, self._vertices, self._indice)
-        self._dist = dynamic_floyd_warshall(self._dist)
+        self._dist = dynamic_floyd_warshall(self._dist)   # Llenar tabla de todos los pares
 
     def decidir_movimiento(self, estado: EstadoJuego) -> Direccion:
         if not self._dist:
-            self.inicializar(estado.laberinto, estado.pos_propia)
+            self.inicializar(estado.laberinto, estado.pos_propia)   # Lazy init si falta
 
         objetivo = self._seleccionar_objetivo(estado)
         if objetivo is None:
             return Direccion.NOOP
 
-        objetivo_idx = self._indice.get(objetivo)
+        objetivo_idx = self._indice.get(objetivo)   # Índice numérico del objetivo en la matriz
         if objetivo_idx is None:
             return Direccion.NOOP
 
@@ -50,17 +51,18 @@ class FloydWarshallExterno(Agente):
             idx = self._indice.get(v)
             if idx is None:
                 continue
-            d = self._dist[idx][objetivo_idx]
+            d = self._dist[idx][objetivo_idx]   # Distancia precomputada desde v al objetivo
             if d < mejor_dist:
                 mejor_dist = d
                 mejor = v
-        return mejor
+        return mejor   # Vecino más cercano al objetivo según Floyd-Warshall
 
     def _seleccionar_objetivo(self, estado: EstadoJuego) -> Optional[Celda]:
         if self.rol == Rol.CAZADOR:
-            return estado.pos_oponente
+            return estado.pos_oponente   # Cazador: perseguir al oponente
         if not estado.salidas:
             return None
+        # Evasor: salida más cercana en distancia Manhattan
         return min(estado.salidas, key=lambda s: self._dist_manhattan(estado.pos_propia, s))
 
     @staticmethod
@@ -69,6 +71,7 @@ class FloydWarshallExterno(Agente):
 
     @staticmethod
     def _construir_vertices(laberinto) -> tuple[list[Celda], dict[Celda, int]]:
+        # Asignar un índice entero a cada celda transitable (para indexar la matriz)
         vertices: list[Celda] = []
         indice: dict[Celda, int] = {}
         for f in range(laberinto.filas):
@@ -76,20 +79,20 @@ class FloydWarshallExterno(Agente):
                 if not laberinto.es_transitable(f, c):
                     continue
                 celda = (f, c)
-                indice[celda] = len(vertices)
+                indice[celda] = len(vertices)   # Índice = posición en la lista
                 vertices.append(celda)
         return vertices, indice
 
     @staticmethod
     def _construir_matriz(laberinto, vertices: list[Celda], indice: dict[Celda, int]) -> list[list[float]]:
         n = len(vertices)
-        dist = [[float("inf") for _ in range(n)] for _ in range(n)]
+        dist = [[float("inf") for _ in range(n)] for _ in range(n)]   # inf = sin camino
         for i in range(n):
-            dist[i][i] = 0.0
+            dist[i][i] = 0.0   # Distancia a sí mismo es 0
         for celda in vertices:
             i = indice[celda]
             for v in laberinto.vecinos_transitables(celda):
                 j = indice.get(v)
                 if j is not None:
-                    dist[i][j] = 1.0
+                    dist[i][j] = 1.0   # Aristas de peso 1 (pasos unitarios)
         return dist
